@@ -1,0 +1,75 @@
+name: VeltraX Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Compilar APK de Android (debug)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Aceptar licencias e instalar componentes del SDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Restaurar y verificar la clave de firma
+        env:
+          VELTRAX_DEBUG_KEYSTORE_B64: ${{ secrets.VELTRAX_DEBUG_KEYSTORE_B64 }}
+        run: |
+          # Quita espacios y saltos de línea: al pegar un secreto suele sobrar un \n final, y base64 lo rechaza
+          LIMPIO=$(printf '%s' "$VELTRAX_DEBUG_KEYSTORE_B64" | tr -d ' \r\n\t')
+          if [ -z "$LIMPIO" ]; then
+            echo "::error title=Falta el secreto::Crea VELTRAX_DEBUG_KEYSTORE_B64 (ver CI_GITHUB.md)."
+            exit 1
+          fi
+          mkdir -p development
+          printf '%s' "$LIMPIO" | base64 --decode > development/veltrax-debug.keystore
+          keytool -exportcert -keystore development/veltrax-debug.keystore -storepass android -alias androiddebugkey -file "$RUNNER_TEMP/veltrax.der" || {
+            echo "::error title=Clave incorrecta::No se pudo abrir el secreto como keystore (contraseña o alias)."
+            exit 1
+          }
+          HUELLA=$(sha256sum "$RUNNER_TEMP/veltrax.der" | cut -d' ' -f1)
+          if [ "$HUELLA" != "f44245442d275dff6a9162a852381811a4ef4fb3c1b21880c0f36c0ef8ca92bf" ]; then
+            echo "::error title=Clave incorrecta::El secreto no es la clave de VeltraX 2.1 (huella $HUELLA)."
+            exit 1
+          fi
+          echo "Clave de firma verificada."
+
+      - name: Dar permisos al Gradle Wrapper
+        run: chmod +x ./gradlew
+
+      - name: Configurar Gradle (caché)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar APK debug
+        run: ./gradlew :androidApp:assembleDebug --no-daemon --stacktrace
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VeltraX-Android-APK
+          path: androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

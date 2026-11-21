@@ -1,0 +1,35 @@
+name: VeltraX Windows MSI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Construir MSI de Windows
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Gradle (caché)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Construir MSI con el Gradle Wrapper
+        run: .\gradlew.bat :desktopApp:packageMsi --no-daemon --stacktrace
+
+      - name: Publicar MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: VeltraX-Windows-MSI
+          path: desktopApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error

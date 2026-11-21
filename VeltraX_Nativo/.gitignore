@@ -1,0 +1,8 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+# Claves de firma: nunca al repositorio. CI las restaura desde el secreto VELTRAX_DEBUG_KEYSTORE_B64 (ver CI_GITHUB.md)
+*.jks
+*.keystore
+.idea/
